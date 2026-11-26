@@ -119,6 +119,26 @@ Measured on Countdown reasoning prompts (`n=16`, non-pad tokens, exact `torch.li
 - **With `QK-Norm=1` + `softcap(30)` at safe LR (`0.02`):** Plain Muon `val_loss = 5.065` vs CapMuon `5.15–5.20` (CapMuon slower — stationary supervised text has no stale-policy feedback loop, and `v₁` carries early unigram signal).
 - **Without `QK-Norm` at high LR (`0.08`):** CapMuon cut attention-logit explosion **`2.15×`** (`max_logit 47.5` vs `102.0`) and beat Plain Muon (`val_loss 6.428` vs `6.467`).
 
+### 5.4 Preliminary LLM RLVR Calibration (`Qwen/Qwen3.5-0.8B`, RTX 3080 Ti, `7.28 GB` VRAM)
+Tested multi-epoch GRPO (`μ = 4`, 32 rollouts/step, binary verifiable Countdown reward, `temp = 0.6`, zero KL tether `KL_BETA = 0`, 186 hooked linear layers tracking `max_lam ≈ 1,445×` live at `+0.00 GB` VRAM):
+
+- **Main 20-step comparison (`lr_muon = 5e-5`, `momentum = 0.85`):**
+
+| Step | Base `muon` Val (`n=32`) | **`cap_p025` Val (`n=32`)** | Delta | Base `muon` KL / Clip | **`cap_p025` KL / Clip** |
+|---|---:|---:|---:|---:|---:|
+| 0 (Init) | 31.2% | 31.2% | `0.0%` | — | — |
+| **5** | 34.4% | **50.0%** | **+15.6%** | `0.0006 / 0.3%` | **`0.0004 / 0.1%`** |
+| **10** | 25.0% | **43.8%** | **+18.8%** | `0.0008 / 0.2%` | **`0.0007 / 0.1%`** |
+| **15** | 25.0% | **34.4%** | **+9.4%** | `0.0012 / 0.9%` | **`0.0008 / 0.2%`** |
+| 20 *(no KL tether / decay)* | 18.8% | 15.6% | `-3.2%` | `0.0015 / 0.7%` | **`0.0014 / 0.5%`** |
+
+- **Aggressive-LR stress test (`lr_muon = 1e-4`, `momentum = 0.95`):** By Step 5, Base Muon dropped `31.2% → 21.9%` (`kl = 0.0051`, `clip = 5.8%`), whereas `cap_p025` (`28.1%`, `kl = 0.0026`, `clip = 2.2%`) and `cap_p050` (`31.2%`, `kl = 0.0030`, `clip = 2.9%`) cut KL drift `41–51%` and clipfrac `50–62%`. Without a KL tether or LR decay, all three drifted off the pretrained manifold by Steps 8–10.
+- **Conservative-LR check (`lr_muon = 3e-5`, `momentum = 0.95`, 10 steps):** Both arms climbed cleanly with `clip ≈ 0.0%`; Base Muon reached `46.9%` vs `cap_p050` `37.5%` (consistent with `p = 0.50` over-damping when LR is already well below Muon's stability limit; `p = 0.25` at `5e-5` reached **`50.0%`**).
+
+<p align="center">
+  <img src="../assets/qwen35_0.8b_rlvr_local.png" alt="Qwen3.5-0.8B Local RLVR Calibration" width="100%">
+</p>
+
 ---
 
 ## 6. Hyperparameter Guide

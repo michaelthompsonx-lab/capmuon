@@ -65,6 +65,16 @@ The same rank-1 common-mode spike appears in **modern 2026 hybrid recurrent LLMs
   <img src="assets/qwen35_0.8b_eigenspectrum.png" alt="Qwen3.5-0.8B Input Eigenspectrum" width="100%">
 </p>
 
+### Preliminary LLM RLVR Calibration (`Qwen/Qwen3.5-0.8B`, Multi-Epoch GRPO $\mu=4$, RTX 3080 Ti)
+
+On verifiable Countdown reasoning (`lr_muon = 5e-5`, `momentum = 0.85`, binary reward, zero KL tether, `7.28 GB` VRAM, 186 hooked linear layers):
+- **`CapMuon (p=0.25)`** surged from **`31.2% → 50.0%`** held-out solve rate by Step 5 (vs Plain Muon peak **`34.4%`**) and stayed **`+9.4% to +18.8%` ahead** through Steps 5–15 (`50.0% / 43.8% / 34.4%` vs `34.4% / 25.0% / 25.0%`) before both unanchored runs drifted by Step 20.
+- Across all tested LRs (`3e-5`, `5e-5`, `1e-4`), CapMuon tracked `max_lam ≈ 1,445×` live at `+0.00 GB` VRAM and **cut multi-epoch KL drift by `27%–51%`** and **PPO clipfrac by `30%–62%`**.
+
+<p align="center">
+  <img src="assets/qwen35_0.8b_rlvr_local.png" alt="Qwen3.5-0.8B Local RLVR Calibration" width="100%">
+</p>
+
 ---
 
 ## Quickstart
