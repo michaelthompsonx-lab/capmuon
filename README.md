@@ -65,14 +65,15 @@ The same rank-1 common-mode spike appears in **modern 2026 hybrid recurrent LLMs
   <img src="assets/qwen35_0.8b_eigenspectrum.png" alt="Qwen3.5-0.8B Input Eigenspectrum" width="100%">
 </p>
 
-### Preliminary LLM RLVR Calibration (`Qwen/Qwen3.5-0.8B`, Multi-Epoch GRPO $\mu=4$, RTX 3080 Ti)
+### Preliminary LLM RLVR Results (`Qwen/Qwen3.5-0.8B`, Multi-Epoch GRPO $\mu=4$, RTX 3080 Ti)
 
-On verifiable Countdown reasoning (`lr_muon = 5e-5`, `momentum = 0.85`, binary reward, zero KL tether, `7.28 GB` VRAM, 186 hooked linear layers):
-- **`CapMuon (p=0.25, k=1)`** surged from **`31.2% → 50.0%`** held-out solve rate by Step 5 (vs Plain Muon peak **`34.4%`**) and stayed **`+9.4% to +18.8%` ahead** through Steps 5–15 (`50.0% / 43.8% / 34.4%` vs `34.4% / 25.0% / 25.0%`).
-- **Expanding to rank-4 (`k=4`, `cap_rank=4`)** — motivated by `Qwen3.5`'s multi-mode outlier subspace (`λ₁/λ₂ = 2.4×` on `mlp.down_proj`) — delivered the **highest 20-step mean training solve rate (`25.6%` vs `19.4%` Plain Muon, `+32%` relative)**, held **`43.8%`** held-out val through Step 15 (`+18.8%` over Plain Muon's `25.0%`), and reduced KL monotonically (`0.0008 → 0.0007 → 0.0006 → 0.0005` for `muon → k=1 → k=4 → k=8`) at **`+0.00–0.01 GB` VRAM**. *(Without a KL tether or LR decay, all 4 unanchored runs drifted by Step 20.)*
+1. **25-step Anchored GRPO (`KL_BETA = 0.02`, cosine LR decay, binary Countdown reward, `7.28 GB` VRAM):**
+   - **`CapMuon (p=0.25, k=4)`** outperformed **both `AdamW` and `Plain Muon`** across every stability and accuracy metric: **`24.6%`** 25-step mean train solve rate (**`+24%`** relative vs Plain Muon `19.9%`, **`2.8×`** vs AdamW `8.8%`), **`37.5%`** mean held-out val (Steps 5–25; **only arm never dipping below the `31.2%` init baseline** vs Plain Muon `33.1%` / final `25.0%` and AdamW `21.9%`), **`-40%` lower base-model KL drift** (`0.105` vs `0.174` Plain Muon, `24.5×` lower than AdamW `2.561`), and **`1.0 GB` less VRAM than AdamW** (`7.28` vs `8.26 GB`).
+2. **20-step Unanchored Rank-$k$ Ablation (`lr=5e-5, mom=0.85, KL_BETA=0`):**
+   - `CapMuon (k=1)` hit **`50.0%`** held-out solve rate by Step 5 (vs Plain Muon peak `34.4%`); expanding to **`k=4`** (matching `Qwen3.5`'s multi-mode outlier subspace) boosted 20-step mean train accuracy to **`25.6%`** (vs `19.4%` Plain Muon) and cut KL monotonically (`0.0008 → 0.0007 → 0.0006 → 0.0005` for `muon → k=1 → k=4 → k=8`).
 
 <p align="center">
-  <img src="assets/qwen35_0.8b_rlvr_local.png" alt="Qwen3.5-0.8B Local RLVR Calibration" width="100%">
+  <img src="assets/qwen35_0.8b_rlvr_anchored.png" alt="Qwen3.5-0.8B 25-Step Anchored GRPO Comparison" width="100%">
 </p>
 
 ---

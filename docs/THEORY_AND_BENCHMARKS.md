@@ -119,10 +119,22 @@ Measured on Countdown reasoning prompts (`n=16`, non-pad tokens, exact `torch.li
 - **With `QK-Norm=1` + `softcap(30)` at safe LR (`0.02`):** Plain Muon `val_loss = 5.065` vs CapMuon `5.15–5.20` (CapMuon slower — stationary supervised text has no stale-policy feedback loop, and `v₁` carries early unigram signal).
 - **Without `QK-Norm` at high LR (`0.08`):** CapMuon cut attention-logit explosion **`2.15×`** (`max_logit 47.5` vs `102.0`) and beat Plain Muon (`val_loss 6.428` vs `6.467`).
 
-### 5.4 Preliminary LLM RLVR Calibration (`Qwen/Qwen3.5-0.8B`, RTX 3080 Ti, `7.28 GB` VRAM)
-Tested multi-epoch GRPO (`μ = 4`, 32 rollouts/step, binary verifiable Countdown reward, `temp = 0.6`, zero KL tether `KL_BETA = 0`, 186 hooked linear layers tracking `max_lam ≈ 1,445×` live at `+0.00 GB` VRAM):
+### 5.4 Preliminary LLM RLVR Results (`Qwen/Qwen3.5-0.8B`, RTX 3080 Ti)
+Tested multi-epoch GRPO (`μ = 4`, 32 rollouts/step, binary verifiable Countdown reward, `temp = 0.6`, 186 hooked linear layers tracking `max_lam ≈ 1,445×` live at `+0.00 GB` VRAM):
 
-- **Main 20-step rank-$k$ comparison (`lr_muon = 5e-5`, `momentum = 0.85`, `n=32` fixed val):**
+- **25-step Anchored GRPO (`KL_BETA = 0.02` via zero-VRAM CPU-swap ref KL, cosine LR decay, `n=32` fixed val):**
+
+| Arm | Peak VRAM | Mean Train Acc | Mean Val (`5–25`) | Val Trajectory (`0→5→10→15→20→25`) | Final Ref KL (`rkl`) | Mean Policy KL |
+|---|---:|---:|---:|---|---:|---:|
+| **`AdamW`** (`5e-6`) | `8.26 GB` | `8.8%` | `21.9%` | `31.2 → 18.8 → 25.0 → 12.5 → 21.9 → 31.2` | `2.5605` | `0.0041` |
+| **`Plain Muon`** (`6e-5`) | `7.28 GB` | `19.9%` | `33.1%` | `31.2 → 43.8 → 40.6 → 28.1 → 28.1 → 25.0` | `0.1742` | `0.0005` |
+| **`CapMuon k=4`** (`6e-5`) | **`7.28 GB`** | **`24.6%`** | **`37.5%`** | **`31.2 → 40.6 → 43.8 → 34.4 → 37.5 → 31.2`** | **`0.1045`** | **`0.0004`** |
+
+<p align="center">
+  <img src="../assets/qwen35_0.8b_rlvr_anchored.png" alt="Qwen3.5-0.8B 25-Step Anchored GRPO" width="100%">
+</p>
+
+- **20-step Unanchored Rank-$k$ Ablation (`lr_muon = 5e-5`, `momentum = 0.85`, `KL_BETA = 0`, `n=32` fixed val):**
 
 | Arm | Init Val | Step 5 Val | Step 10 Val | **Step 15 Val** | Step 20 Val *(no KL tether)* | **Mean Train Acc** | **Mean KL** | Peak VRAM |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
