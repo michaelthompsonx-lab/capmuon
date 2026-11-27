@@ -141,7 +141,22 @@ Tested multi-epoch GRPO (`μ = 4`, 32 rollouts/step, binary verifiable Countdown
 
 ---
 
-## 6. Hyperparameter Guide
+## 6. Can Input Anisotropy Be Fixed Prior to the Optimizer? (Pre-Optimizer Ablation)
+
+A natural question is whether fixing the upstream architecture (e.g., removing the `+0.5` bias in PufferLib 5.0's MinGRU candidate `h_tilde = (hidden >= 0) ? hidden + 0.5 : sigmoid(hidden)` by zero-centering it to `h_tilde - 0.5`) eliminates the need for CapMuon. We tested zero-centered MinGRU (`h_tilde(0) = 0`, exact $C^1$ derivative, zero overhead) directly against CapMuon on clean PufferLib 5.0 (RTX 3080 Ti):
+
+| Benchmark | Plain Muon (stock) | **Centered MinGRU (Muon)** | **CapMuon `p=0.50` (stock)** | **Centered + CapMuon `p=0.50`** |
+|---|---|---|---|---|
+| **Breakout** (stock `55M`, `H=32`, 10 seeds) | `0.9496 ± 0.0656` (`4/10 ≥.98`) | `0.9146 ± 0.1031` (`3/10 ≥.98`) | **`0.9927 ± 0.0087` (`9/10 ≥.98`)** | **`0.9945 ± 0.0058` (`10/10 ≥.98`, min `0.980`)** |
+| **Terraform** (`235M`, `H=512`, 3 seeds) | `0.2223 ± 0.3392` (`2/3` collapsed: `0.026, 0.027, 0.614`) | `0.4133 ± 0.3346` (`1/3` still collapsed: `0.027, 0.606, 0.607`) | **`0.5973 ± 0.0061` (`3/3`: `0.604, 0.592, 0.596`)** | **`0.6057 ± 0.0021` (`3/3`: `0.605, 0.608, 0.604`)** |
+
+**Takeaway:**
+1. **Upstream centering alone is NOT sufficient:** Even when MinGRU is zero-centered at initialization, uncentered encoders (`Breakout`), learned activation asymmetry during RL training (`Terraform` seed 73 still collapsed to `0.027`), and non-mean variance spikes (`Qwen3.5-0.8B` `L6.linear_attn.out_proj`: `947×` with `|cos(v₁, E[x])| = 0.092`) still break Plain Muon.
+2. **Architectural hygiene and CapMuon are complementary:** CapMuon alone solves `9/10` Breakout and `3/3` Terraform without altering the forward pass (critical for pretrained LLMs), and combining `Centered MinGRU + CapMuon` achieved **`10/10 ≥ 0.98`** on Breakout and **`0.6057 ± 0.0021`** (`161×` tighter std than Plain Muon) on Terraform.
+
+---
+
+## 7. Hyperparameter Guide & Future Expansions
 
 | Parameter | Default | Guidance |
 |---|---:|---|
