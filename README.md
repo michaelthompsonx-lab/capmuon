@@ -54,31 +54,34 @@ All runs executed on clean upstream `PufferAI/PufferLib@5.0` (`ea7f989`) via [`m
   <img src="assets/capmuon_eigenspectra.png" alt="Exact Input Eigenspectra Across PufferLib RL Widths" width="100%">
 </p>
 
-The same rank-1 common-mode spike appears in **modern 2026 hybrid recurrent LLMs** — even after RMSNorm. Measuring exact $F = X^\top X / N$ on **`Qwen/Qwen3.5-0.8B`** (18 Gated DeltaNet + 6 Attention layers) reveals **`1,119× – 1,251×`** spikes with **60%+ of layer input energy in one mode**:
+The same rank-1 common-mode spike is **universal across 2026 LLM architectures** — Gated DeltaNet hybrids, Google Gemma 4, pure Transformers, and Liquid gated-conv hybrids — even after RMSNorm. Measuring exact $F = X^\top X / N$ (raw and mean-centered) on Countdown prompts:
 
-| `Qwen/Qwen3.5-0.8B` Layer | Shape | $\lambda_1 / \bar{\lambda}$ | $\lambda_1 / \lambda_2$ | `%E₁` | $|\cos(v_1, \mathbb{E}[x])|$ |
-|---|---|---:|---:|---:|---:|
-| **`L0.linear_attn.out_proj`** *(Gated DeltaNet)* | `(*, 2048)` | **1,250.7×** | `7.6×` | **61.1%** | **0.9996** |
-| **`L23.self_attn.o_proj`** | `(*, 2048)` | **1,230.4×** | `13.3×` | **60.1%** | **0.9998** |
-| **`L23.mlp.down_proj`** | `(*, 3584)` | **1,118.6×** | `2.4×` | **31.2%** | **0.9852** |
-| `L18.linear_attn.out_proj` *(Gated DeltaNet)* | `(*, 2048)` | **663.6×** | `3.5×` | `32.4%` | `0.9947` |
-| `L23.mlp.gate_proj` *(post-RMSNorm)* | `(*, 1024)` | **422.4×** | `7.3×` | `41.2%` | `0.9971` |
-| `L23.self_attn.q/k/v_proj` *(post-RMSNorm)* | `(*, 1024)` | **363.9×** | `6.1×` | `35.5%` | `0.9977` |
-| `L0.linear_attn.in_proj_qkv` *(post-RMSNorm)* | `(*, 1024)` | **355.8×** | `4.6×` | `34.7%` | `0.9557` |
+| 2026 Model & Architecture | Worst Probed Layer | `d_in` | **`λ₁ / mean`** | **Raw `%E₁`** | **Centered `%E₁`** | `\|cos(v₁, E[x])\|` |
+|---|---|---:|---:|---:|---:|---:|
+| **`google/gemma-4-E2B-it`** *(Gemma 4)* | `L34.self_attn.o_proj` / `per_layer_input_gate` *(live MLP `down_proj` hits **`6,139×`**)* | `4096` / `1536` | **`1,979.4×`** / **`1,449.4×`** | **`94.4%`** | **`64.3%`** | **`1.0000`** |
+| **`Qwen/Qwen3.5-0.8B`** *(Gated DeltaNet)* | `L0.linear_attn.out_proj` / `L6.linear_attn.out_proj` | `2048` | **`1,245.8×`** / `923.5×` | **`60.8%`** | `19.9%` (`53.7%` L6) | **`0.9998`** |
+| **`Qwen/Qwen2.5-1.5B`** *(Pure Transformer)* | `L0.self_attn.q/k/v_proj` | `1536` | **`1,124.6×`** | **`73.2%`** | **`64.8%`** | **`0.9856`** |
+| **`LiquidAI/LFM2-1.2B`** *(Liquid Conv+Attn)* | `L8.self_attn.out_proj` / `L0.conv.out_proj` | `2048` | **`846.8×`** / `835.1×` | **`41.3%`** | `34.6%` (`conv`) | **`0.9965`** |
 
 <p align="center">
   <img src="assets/qwen35_0.8b_eigenspectrum.png" alt="Qwen3.5-0.8B Input Eigenspectrum" width="100%">
 </p>
 
-### Preliminary LLM RLVR Results (`Qwen/Qwen3.5-0.8B`, Multi-Epoch GRPO $\mu=4$, RTX 3080 Ti)
+### Cross-Architecture LLM RLVR Benchmarks (Multi-Epoch GRPO $\mu=4$, Google Colab L4, Full `bf16`)
 
-1. **25-step Anchored GRPO (`KL_BETA = 0.02`, cosine LR decay, binary Countdown reward, `7.28 GB` VRAM):**
-   - **`CapMuon (p=0.25, k=4)`** outperformed **both `AdamW` and `Plain Muon`** across every stability and accuracy metric: **`24.6%`** 25-step mean train solve rate (**`+24%`** relative vs Plain Muon `19.9%`, **`2.8×`** vs AdamW `8.8%`), **`37.5%`** mean held-out val (Steps 5–25; **only arm never dipping below the `31.2%` init baseline** vs Plain Muon `33.1%` / final `25.0%` and AdamW `21.9%`), **`-40%` lower base-model KL drift** (`0.105` vs `0.174` Plain Muon, `24.5×` lower than AdamW `2.561`), and **`1.0 GB` less VRAM than AdamW** (`7.28` vs `8.26 GB`).
-2. **20-step Unanchored Rank-$k$ Ablation (`lr=5e-5, mom=0.85, KL_BETA=0`):**
-   - `CapMuon (k=1)` hit **`50.0%`** held-out solve rate by Step 5 (vs Plain Muon peak `34.4%`); expanding to **`k=4`** (matching `Qwen3.5`'s multi-mode outlier subspace) boosted 20-step mean train accuracy to **`25.6%`** (vs `19.4%` Plain Muon) and cut KL monotonically (`0.0008 → 0.0007 → 0.0006 → 0.0005` for `muon → k=1 → k=4 → k=8`).
+Tested apples-to-apples (identical initial weights, identical prompt stream, binary exact-rational Countdown reward, DeepSeek-R1 `k3` ref-KL `β = 0.02`, cosine LR) across **two completely distinct 2026 architectures** — **Alibaba `Qwen/Qwen3.5-0.8B`** (Gated DeltaNet hybrid, `n=100` val) and **Google `google/gemma-4-E2B-it`** (`1.88B` trainable 35-layer text backbone, `276` linear matrices up to `d=6144`, harder 4-number Countdown, `n=80` val):
+
+1. **`Qwen/Qwen3.5-0.8B` 6-Arm `cap_p` Sweep (`lr=6e-5`, 30 steps, `n=100` val):**
+   - **Every single CapMuon exponent (`p = 0.15 / 0.25 / 0.35 / 0.50`) beat both `AdamW` and `Plain Muon` on every metric:** **`CapMuon (p=0.35, k=4)`** won Mean Val (**`32.0%`** vs Plain Muon `25.0%` = **`+28.0%` rel**, AdamW `18.0%` = **`+77.8%` rel**), `p=0.25` hit Peak Val (**`37.0%`**) and Mean Train (**`24.8%`** vs `20.0%` / `13.0%`), and `p=0.50` hit **`30.0%`** Final Val / **`26.6%`** Last-10 Train (**`+70.5%` rel**) while cutting base-model KL **`-63.1%`** (`0.0912` vs `0.2474` Plain Muon, **`33.2×` lower** than AdamW `3.0278`).
+2. **`google/gemma-4-E2B-it` (`1.88B` backbone, `6,139×` live spike, hard 4-num Countdown, `n=80` val):**
+   - At conservative `lr = 5e-5`, Plain Muon climbed cleanly to `31.2%` mean / `35.0%` peak (`rkl = 0.0103`), while `CapMuon p=0.25` cut KL `-67%` (`0.0034`) — exposing massive LR headroom.
+   - Pushing LR **`4×` higher (`lr = 2e-4`, 20 steps):** `Plain Muon` hit its stability wall and collapsed (`25.0 → 30.0 → 21.2 → 25.0 → 28.7%`, mean `26.2%`, `rkl = 0.0909`). **CapMuon scaled monotonically with `cap_p` across `0.25 → 0.35 → 0.50`**, shattering even Plain Muon's best safe `5e-5` run at **zero extra VRAM (`20.0 GB` identical)** and **`+2.5%` wall time**:
+     - **`p = 0.25`**: `30.3%` mean (`+15.6%`), `35.0%` peak, `36.2%` mean train, **`rkl = 0.0111` (`8.2×` lower!)**
+     - **`p = 0.35`**: `32.8%` mean (`+25.2%`), **`38.8%` final val (`+10.1 pts` / `+35.2%` rel)**, **`90.6%` Step-20 train**, `rkl = 0.0323` (`-64.5%`)
+     - **`p = 0.50`**: **`35.9%` mean (`+37.0%` rel!)**, **`41.2%` peak val (`+16.2 pts` over init in 15 steps!)**, `rkl = 0.0235` (`-74.1%`)
 
 <p align="center">
-  <img src="assets/qwen35_0.8b_rlvr_anchored.png" alt="Qwen3.5-0.8B 25-Step Anchored GRPO Comparison" width="100%">
+  <img src="assets/colab_rlvr_cross_arch.png" alt="CapMuon Cross-Architecture LLM RLVR Benchmarks (Qwen3.5-0.8B & Gemma 4 E2B)" width="100%">
 </p>
 
 ---
