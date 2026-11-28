@@ -104,11 +104,29 @@ Measured on Countdown reasoning prompts (`n=16`, non-pad tokens, exact `torch.li
 |---|---:|---|---|---|---|---|
 | **Breakout** (`cap50_r160`, `13.9M`, `H=32`, `fs=3`) | 10 | `0.9314 ± 0.0558` (`2/10 ≥.98`, `0.619s`) | — | **`0.9894 ± 0.0142` (`9/10 ≥.98`, `10/10 ≥.95`, `0.672s`)** | `+8.5%` | Beats Constellation 5090 SOTA (`0.80s / 46.8M → 0.9882`) in `3.37×` fewer steps |
 | **Breakout** (stock `55M`, `H=32`, `fs=3`) | 10 | `0.9299 ± 0.0463` (`0/10 ≥.98`, `0.871s`) | — | **`0.9862 ± 0.0171` (`7/10 ≥.98`, `1.023s`)** | `+17%` | `0/10 → 7/10` solves (`≥0.98`) |
+| **Breakout Riced** (`18.1M` / `18.5M`, `H=16, L=3`, `fs=3`) | 10 | `0.6379 ± 0.258` (`0/10 ≥.98`) | — | **`0.9732 ± 0.0313` (`8/10 ≥.98`, `62ms`)** | Fused `bf16` NS | `294.6M SPS` (`seed=9 → 0.9986`); `48ms` (`390M SPS`) single-seed bit-exact solve (`0.9926`) |
+| **Dino** (stock `220M`, `H=512, L=2`) | 10 | `31.89 ± 11.17` (`med 29.32`, `1/10 ≥50`, `33.5s`) | `44.36` *(3-seed)* | **`48.79 ± 19.01` (`med 50.56`, `6/10 ≥50`, `32.9s`)** | **`~0%`** | **`+53.0%` mean / `+72.4%` median**, peak `94.94` vs `62.43` |
 | **2048** (`744M`, `H=256, L=5`, `async=1`) | 3 | `9,378.6 ± 528.6` (`AUC 5,864`, `177.2s`) | — | **`10,740.5 ± 413.7` (`AUC 6,787`, peak `11,218`, `177.2s`)** | **`0.00%`** | `+14.5%` score (`+1,362` pts), `3/3` beat all Muon seeds |
+| **2048 Frontier** (`#9 350M` / `#1 1.25B`, `h=512`) | 1 | `#9: 8,510.8` (`16K: 23.8%`) / `#1: 6.30% 32K` | **`#9: 9,131.0` (`+7.3%`)** / **`#1: 8.58% 32K`** | — | **`+1.0%`** | **New `32,768` tile record (`8.58%`, `+36.2%` vs Constellation `#1`)**, `14,373.4` score, `64.3%` `16K` |
 | **Terraform** (`235M`, `H=512, L=5`) | 3 | `0.2101 ± 0.3165` (`2/3` collapsed, `AUC 0.138`, `128.0s`) | **`0.5938 ± 0.0150` (`3/3`, `AUC 0.423`, `129.1s`)** | **`0.6015 ± 0.0054` (`3/3`, `AUC 0.438`, `128.9s`)** | **`+0.7%`** | `2.86×` mean perf, `3.17×` AUC, `59×` tighter std |
 | **Snake** (`500M`, `H=1024, L=3`) | 3 | `111.44 ± 4.33` (`AUC 0.589`, `381.5s`) | **`119.50 ± 1.99` (`AUC 0.631`, `382.2s`)** | `116.72 ± 1.34` (`AUC 0.632`, `382.4s`) | **`+0.18%`** | `+7.2%` score; `0.5× LR` Muon control dropped to `97.5` |
 | **Pacman** (`205M`, `H=256, L=6`) | 3 | `201.85 ± 3.88` (`AUC 0.691`, `42.5s`) | `197.19 ± 5.64` | **`204.43 ± 10.96` (`AUC 0.701`, peak `217.1`, `43.4s`)** | `+2.1%` | Slight win for `p=0.50` |
 | **Craftax `1m`** (`4096` ag, `2.0B`, `H=256, L=5`) | 2 | `84.34 / 74.91` (`AUC 0.230`, `594s`) | **`81.69` (`AUC 0.240`, `602s`)** | `58.53 / 61.92` *(stalled F2 at 4096 ag)* | `+1.2%` | `p=0.25` clears F2 saddle; see `2048`-ag & `200M` below |
+
+### 5.1b 84-Env Spectral Probe Verification (6 Untested High-Anisotropy Envs, RTX 5090)
+
+Probing 84 of 99 PufferLib envs for 30 s under Plain Muon identified the highest-anisotropy untested environments. Testing six spanning both pure mean-shift (`raw >> centered`) and true covariance anisotropy (`raw ≈ centered`) reveals when CapMuon wins vs. when `p` should stay low or zero:
+
+| Env (`H×L`, steps) | Raw → Centered Share | Seeds | Plain Muon | Centered Only | CapMuon `p=0.25` | CapMuon `p=0.50` | Centered+Cap `0.25` | Diagnosis |
+|---|---|---:|---|---|---|---|---|---|
+| **`dino`** (`512×2`, `220M`) | `92% → 37%` | 10 *(3)* | `31.89 ± 11.17` *(27.51)* | *(21.57)* | *(44.36)* | **`48.79 ± 19.01`** | *(43.07)* | **Massive win** (`+53.0%` mean / `+72.4%` med, `6/10` vs `1/10 ≥50`); centering alone hurts |
+| **`wef`** (`1024×4`, `75M`) | `88% → 13%` | 2 | `24.600` | `24.573` | **`24.770`** | `24.721` | `24.666` | Slight win (`+0.7%`); mostly mean-shift, low instability |
+| **`boxoban`** (`512×2.5`, `3.58B`) | `74% → 5%` | 1 | **`0.1642`** | `0.1622` | `0.1535` | — | `0.1629` | Pure mean-shift (`5%` centered), already stable under Plain Muon |
+| **`nmmo3`** (`512×6`, `300M`) | `94% → 76–89%` | 1 | **`10.625`** | `10.484` | `10.552` | `7.639` | — | High centered share = real task variance; `p=0.25` safe, `p=0.50` over-damps |
+| **`clifford`** (`256×3`, `100M`) | `94% → 35%` | 3 | `2.298` | `2.298` | `2.298` | `2.298` | `2.299` | Already saturated under Plain Muon |
+| **`blastar`** (`128×4`, `200M`) | `99% → 47–80%` | 3 | `50.996` (`3/3`) | `34.719` (`2/3`) | `34.020` (`2/3`) | `50.964` (`3/3`) | `50.951` (`3/3`) | Already saturated under Plain Muon (`51.0` ceiling) |
+
+**Key lesson:** Raw anisotropy is a **prior, not a guarantee**, and optimal damping varies continuously by environment (`0.0` on `boxoban`/`nmmo3`, `0.25–0.35` on `snake`/`g2048`, `0.45–0.55` on `dino`/`terraform`/`breakout`). Treating `cap_p ∈ [0.0, 0.6]` as a **sweepable hyperparameter** (with `p = 0.0` short-circuiting to zero-cost exact Plain Muon) lets sweepers automatically select the right damping per task.
 
 ### 5.2 Additional RTX 3080 Ti Suites & Ablations
 - **Craftax `1m` (`200M` LR sweep, `H=256`, 3 seeds):** CapMuon `p=0.50` hit **`40.5 ± 0.8`** (`83%` Floor-1 reach) vs Plain Muon's best LR **`30.3 ± 8.3`** (`51%` F1) — a **`+34%` pure hidden-layer win** (Craftax uses a category embedding encoder, so encoder capping is inactive). At `2.0B` with `2048` agents, `p=0.50` reached **`93.30`** vs Plain Muon **`84.57`** (`+10.3%`).
@@ -171,7 +189,7 @@ A natural question is whether fixing the upstream architecture (e.g., removing t
 
 | Parameter | Default | Guidance |
 |---|---:|---|
-| `cap_p` | `0.25` | Use **`0.25`** as the safe universal default across widths and large batch sizes. Use **`0.50`** for aggressive LRs, strong anisotropy, or high-variance multi-epoch RL. |
+| `cap_p` | `0.25` (sweep `[0.0, 0.6]`) | **Recommended:** sweep continuously over `[0.0, 0.6]` (`0.0` short-circuits to exact zero-overhead Plain Muon; active automatically in PufferLib sweeps with `--train.muon_cap=1`). For fixed runs, use **`0.25`** as the safe universal default (`snake`, `g2048`, `nmmo3`, `Qwen3.5`) and **`0.50`** for unstable / high-LR RL (`dino`, `terraform`, `breakout`, `craftax`). |
 | `cap_c` | `1.0` | Threshold multiplier $c$ in $s_i = \min(1, (c\bar{\lambda}/\lambda_i)^p)$. Leave at `1.0`. |
 | `cap_ema` | `0.9` | EMA decay for streaming power iteration. Works well across `0.85–0.95`. |
 | `cap_rank` | `1` | `k = 1` captures the exact $O(d)$ common-mode cliff at minimal cost. |

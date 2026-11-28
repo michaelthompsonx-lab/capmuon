@@ -16,11 +16,11 @@ $$\frac{\lambda_1}{\bar{\lambda}} = O(d_{\text{in}})$$
 
 — reaching **`1,013×`** at `H=1024` in PufferLib 5.0 RL networks and **`1,251×`** in **`Qwen/Qwen3.5-0.8B`** Gated DeltaNet layers. Plain Muon assigns full spectral norm along this dominant direction, overshooting activation-space steps by $O(\sqrt{d_{\text{in}}})$ and triggering multi-epoch RL policy collapse.
 
-**CapMuon** tracks only the top-1 input eigenpair $(v_1, \lambda_1)$ of $F = \mathbb{E}[x x^\top]$ per 2D linear layer via deterministic, matrix-free **$O(Bd_{\text{in}})$ EMA power iteration** (zero $d \times d$ covariance matrices, 100% CUDA-graph compatible, **`0.0%–0.8%`** wall-clock overhead at `H ≥ 256`) and applies a **one-sided contraction cap** $S \preceq I$:
+**CapMuon** tracks only the top-1 input eigenpair $(v_1, \lambda_1)$ of $F = \mathbb{E}[x x^\top]$ per 2D linear layer via **100% bit-for-bit deterministic** (zero-`atomicAdd`), matrix-free **$O(Bd_{\text{in}})$ EMA power iteration** (zero $d \times d$ covariance matrices, 100% CUDA-graph compatible, **`0.0%–0.8%`** wall-clock overhead at `H ≥ 256`) and applies a **one-sided contraction cap** $S \preceq I$:
 
 $$\Delta W = -\eta\,\mathrm{polar}(Z S)\,S \cdot \sqrt{\max(1, R/C)}, \qquad S = I - (1 - s_1)\,v_1 v_1^\top, \qquad s_1 = \min\!\left(1,\; \left(\frac{c\,\bar{\lambda}}{\lambda_1}\right)^p\right)$$
 
-Unlike K-FAC or Shampoo whitening, $S \preceq I$ **never amplifies noisy tail eigenvalues**. Inner $\mathrm{polar}(Z S)$ redirects orthogonal update energy away from the dominant spike into lower-variance task features, while outer $S$ bounds activation-space step energy.
+Unlike K-FAC or Shampoo whitening, $S \preceq I$ **never amplifies noisy tail eigenvalues**. Inner $\mathrm{polar}(Z S)$ redirects orthogonal update energy away from the dominant spike into lower-variance task features, while outer $S$ bounds activation-space step energy. Setting **$p = 0$ recovers exact, zero-overhead Plain Muon**, making $p \in [0.0, 0.6]$ a smooth, sweepable damping parameter.
 
 <p align="center">
   <img src="assets/capmuon_rtx5090_results.png" alt="CapMuon RTX 5090 Clean-Room Benchmarks" width="100%">
@@ -35,11 +35,16 @@ All runs executed on clean upstream `PufferAI/PufferLib@5.0` (`ea7f989`) via [`m
 | Benchmark | Width | Seeds | Plain Muon | **CapMuon (`p=0.25`)** | **CapMuon (`p=0.50`)** | Overhead | Headline Takeaway |
 |---|---:|---:|---|---|---|---|---|
 | **Breakout** (`13.9M`, `fs=3`) | `32` | 10 | `0.931 ± 0.056` (`2/10 ≥.98`, `0.62s`) | — | **`0.989 ± 0.014` (`9/10 ≥.98`, `0.67s`)** | `+8.5%` | **Beats Constellation 5090 SOTA** (`0.80s / 46.8M`) in **3.37× fewer steps** |
-| **Terraform** (`235M`) | `512` | 3 | `0.210 ± 0.317` (`2/3` collapsed!) | **`0.594 ± 0.015` (`3/3`, `3.05×` AUC)** | **`0.602 ± 0.005` (`3/3`, `3.17×` AUC)** | **`+0.7%`** | **Kills collapse** (`59×` tighter std; 6/6 beat Muon's best seed) |
+| **Breakout Riced** (`18.1M`, `fs=3`) | `16` | 10 | `0.638 ± 0.258` (`0/10 ≥.98`) | — | **`0.973 ± 0.031` (`8/10 ≥.98`, `62ms`)** | Fused `bf16` NS | **`62ms` (`295M SPS`, peak `0.9986`)**; **`48ms` (`390M SPS`)** single-seed bit-exact solve (`0.9926`) |
+| **Dino** (stock `220M`, `L=2`) | `512` | 10 | `31.89 ± 11.17` (`med 29.3`, `1/10 ≥50`) | `44.36` *(3-seed)* | **`48.79 ± 19.01` (`med 50.6`, `6/10 ≥50`)** | **`~0%`** | **`+53.0%` mean / `+72.4%` median**, peak `94.94` vs `62.43` (Centered-only hurt: `21.57`) |
+| **Terraform** (`235M`, `L=5`) | `512` | 3 | `0.210 ± 0.317` (`2/3` collapsed!) | **`0.594 ± 0.015` (`3/3`, `3.05×` AUC)** | **`0.602 ± 0.005` (`3/3`, `3.17×` AUC)** | **`+0.7%`** | **Kills collapse** (`59×` tighter std; 6/6 beat Muon's best seed) |
 | **2048** (`744M`, `async=1`) | `256` | 3 | `9,379 ± 529` (`AUC 5,864`, `177.2s`) | — | **`10,741 ± 414` (`+14.5%`, peak `11,218`)** | **`0.00%`** | 3/3 beat all Muon seeds; **+1,362 pts at zero wall-clock cost** |
-| **Snake** (`500M`) | `1024` | 3 | `111.4 ± 4.3` (`AUC 0.589`, `381.5s`) | **`119.5 ± 2.0` (`+7.2%`, `AUC 0.631`)** | `116.7 ± 1.3` (`+4.7%`, `AUC 0.632`) | **`+0.18%`** | 3/3 `p=0.25` beat all Muon seeds (`0.5× LR` Muon fell to `97.5`) |
-| **Pacman** (`205M`) | `256` | 3 | `201.9 ± 3.9` (`AUC 0.691`, `42.5s`) | `197.2 ± 5.6` | **`204.4 ± 11.0` (peak `217.1`)** | `+2.1%` | Slight win for `p=0.50` (`+1.3%` mean, `0.905` peak perf) |
+| **2048 Frontier** (`#9 350M` / `#1 1.25B`) | `256` / `1024` | 1 | `#9: 8,511` (`16K: 23.8%`) / `#1: 6.30% 32K`* | **`#9: 9,131` (`+7.3%`)** / **`#1: 8.58% 32K`** | — | **`+1.0%`** | **New `32,768` tile record (`8.58%`, `+36.2%` vs Constellation `#1`)**, `14,373` score |
+| **Snake** (`500M`, `L=3`) | `1024` | 3 | `111.4 ± 4.3` (`AUC 0.589`, `381.5s`) | **`119.5 ± 2.0` (`+7.2%`, `AUC 0.631`)** | `116.7 ± 1.3` (`+4.7%`, `AUC 0.632`) | **`+0.18%`** | 3/3 `p=0.25` beat all Muon seeds (`0.5× LR` Muon fell to `97.5`) |
+| **Pacman** (`205M`, `L=6`) | `256` | 3 | `201.9 ± 3.9` (`AUC 0.691`, `42.5s`) | `197.2 ± 5.6` | **`204.4 ± 11.0` (peak `217.1`)** | `+2.1%` | Slight win for `p=0.50` (`+1.3%` mean, `0.905` peak perf) |
 | **Craftax `1m`** (`200M` LR sweep, 3080 Ti) | `256` | 3 | `30.3 ± 8.3` *(peak across LRs)* | `22.5` (`1.0× LR`) | **`40.5 ± 0.8` (`+34%`, `83%` vs `51%` F1)** | **`+0.15%`** | **Pure hidden-layer win** (embedding encoder); **`93.3` vs `84.6`** at `2B` (`2048` ag) |
+
+*\*`#1` reference `6.30% 32K` (`14,628.5` score) is from PufferLib's `resources/constellation/experiments.ini`.*
 
 ---
 
@@ -136,6 +141,10 @@ bash build.sh g2048 cap_g2048
 
 # Aggressive peak setting for high-LR / high-anisotropy tasks (p=0.50)
 ./cap_g2048 train --train.muon_cap=1 --train.muon_cap_p=0.5
+
+# Recommended: sweep muon_cap_p continuously in [0.0, 0.6] with Protein
+# (p=0.0 is exact zero-overhead Plain Muon; automatically active when muon_cap=1)
+./cap_g2048 sweep --train.muon_cap=1
 ```
 
 ### 4. LLM RLVR Notebook (Google Colab / Local GPU)
@@ -146,12 +155,18 @@ Run [`notebooks/capmuon_rlvr_colab.ipynb`](notebooks/capmuon_rlvr_colab.ipynb) o
 
 ## Where CapMuon Helps vs. Where It Doesn't (Honest Scope)
 
-CapMuon is a **non-stationary / feedback-loop RL stabilizer**, not a universal drop-in win for stationary supervised pretraining:
+CapMuon is a **non-stationary / feedback-loop RL stabilizer**, not a universal drop-in win for stationary supervised pretraining or already-saturated tasks:
 
-- **Strong wins:** Multi-epoch PPO/GRPO RL, recurrent/hybrid policies (MinGRU, LSTM, Gated DeltaNet), wide networks (`H ≥ 256`), and aggressive learning rates where Plain Muon destabilizes or collapses.
-- **When to use `p = 0.25` vs `p = 0.50`:**
-  - **`p = 0.25`**: Safest universal drop-in default (zero collapses anywhere; best on `Snake H=1024`; clears `Craftax 4096-agent` F2 saddle where `p = 0.50` over-damped).
-  - **`p = 0.50`**: Peak gains on high-LR / high-anisotropy tasks (`Breakout`, `2048`, `Terraform`, `Pacman`, `Craftax 200M`).
+- **Strong wins:** Multi-epoch PPO/GRPO RL, recurrent/hybrid policies (MinGRU, LSTM, Gated DeltaNet), wide networks (`H ≥ 256`), and aggressive learning rates where Plain Muon destabilizes, stalls, or collapses (`Dino +53% mean / +72% median`, `Terraform +186%`, `Breakout 9/10 vs 2/10` and `8/10 vs 0/10` at `H=16`, `2048 +14.5%` / `+36% 32K tiles`, `Snake +7.2%`, `Craftax +34%`, `Qwen3.5-0.8B GRPO +24%`).
+- **84-Env Spectral Probe Screening (6 untested high-anisotropy envs verified on RTX 5090):**
+  High raw $\lambda_1/\bar{\lambda}$ is **necessary but not sufficient** — comparing raw vs. mean-centered top-eigenvalue share separates pure mean-shift from true covariance anisotropy, and tells you whether Plain Muon is actually bottlenecked:
+  - **`dino`** (`92% raw → 37% centered`): **Massive win** (`+53.0%` mean / `+72.4%` median at `p=0.50`; Centered-only hurt at `21.57`).
+  - **`wef`** (`88% → 13%`, `1024×4`): Slight win (`24.77` at `p=0.25` vs `24.60` Plain).
+  - **`boxoban`** (`74% → 5%`, `3.58B`): Neutral (`0.164` Plain vs `0.163` Centered+Cap `0.25` / `0.154` Cap `0.25`) — pure mean shift, already stable.
+  - **`nmmo3`** (`94% → 76–89%`, `300M`): `p=0.25` is safe (`10.55` vs `10.63` Plain), while **`p=0.50` over-damped real task-signal variance (`7.64`)**.
+  - **`clifford`** (`94%`) & **`blastar`** (`99%`): Already saturated under Plain Muon (`2.298` and `51.0`).
+- **Sweep `cap_p` continuously (`[0.0, 0.6]`) instead of locking a single constant:**
+  Because optimal damping depends on how much of $v_1$ is nuisance mean-shift vs. task signal (`0.0` on `boxoban`/`nmmo3`, `0.25–0.35` on `snake`/`g2048`, `0.45–0.55` on `dino`/`terraform`/`breakout`), **`cap_p` should be treated as a continuous sweepable hyperparameter**. Both the CUDA kernel (`capmuon.cuh`) and PyTorch optimizer short-circuit at `cap_p = 0.0` to **exact, zero-overhead Plain Muon**, so a sweeper (e.g. PufferLib Protein via `--train.muon_cap=1`) smoothly interpolates from Plain Muon to full iso-output capping. When fixing a single value without sweeping, use **`p = 0.25`** as the safe universal default and **`p = 0.50`** for unstable/high-LR RL.
 - **Stationary LLM pretraining (`modded-nanogpt` 124M FineWeb):** With `QK-Norm + softcap(30)` at safe LR (`0.02`), CapMuon was *slower* than Plain Muon (`val_loss 5.15–5.20` vs `5.065`) because stationary text lacks stale-policy feedback loops. Removing `QK-Norm` at high LR (`0.08`) flipped the result: CapMuon cut attention-logit explosion **`2.15×`** (`max_logit 47.5` vs `102.0`) and beat Plain Muon (`6.428` vs `6.467`).
 
 For the full mathematical derivation, algorithm pseudocode, per-seed tables, and ablations, read **[`docs/THEORY_AND_BENCHMARKS.md`](docs/THEORY_AND_BENCHMARKS.md)**.

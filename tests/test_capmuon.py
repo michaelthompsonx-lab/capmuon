@@ -74,7 +74,23 @@ def test_cap_p0_matches_plain_muon():
 
     for p1, p2 in zip(m1.parameters(), m2.parameters()):
         assert torch.allclose(p1, p2, atol=1e-6), "cap_p=0 should match Plain Muon identically"
+    for tr in opt_p0.trackers.values():
+        assert tr.steps == 0, "cap_p=0 should skip forward tracker updates for zero overhead"
     opt_p0.remove_hooks()
+
+
+def test_continuous_cap_p_monotonic_damping():
+    torch.manual_seed(13)
+    d = 64
+    v = torch.ones(d) / math.sqrt(d)
+    X = 0.2 * torch.randn(512, d) + 4.0 * v.unsqueeze(0)
+    s_vals = []
+    for p_val in (0.0, 0.25, 0.30, 0.50):
+        tr = CapTracker(d=d, device=torch.device("cpu"), rank=1, ema=0.5, cap_c=1.0, cap_p=p_val)
+        for _ in range(6):
+            tr.update(X)
+        s_vals.append(float(tr.s[0].item()))
+    assert s_vals[0] == 1.0 and s_vals[0] > s_vals[1] > s_vals[2] > s_vals[3] > 0.0
 
 
 def test_capping_reduces_dominant_mode_activation_step():

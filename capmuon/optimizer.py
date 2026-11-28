@@ -147,7 +147,8 @@ class CapMuon(torch.optim.Optimizer):
         weight_decay: Decoupled weight decay (default: 0.0).
         cap: Enable input-geometry capping (default: True). Set False for Plain Muon.
         cap_p: Cap exponent p in s_i = min(1, (c*mean/lam_i)^p).
-               Recommended: 0.25 (safe universal default) or 0.50 (peak RL / high-LR).
+               0.0 = exact zero-overhead Plain Muon; recommended sweep range [0.0, 0.6].
+               Fixed presets: 0.25 (safe universal default) or 0.50 (peak RL / high-LR).
         cap_c: Threshold multiplier c (default: 1.0).
         cap_ema: EMA decay for input power iteration (default: 0.9).
         cap_rank: Number of top input modes to cap (default: 1).
@@ -215,7 +216,7 @@ class CapMuon(torch.optim.Optimizer):
 
                 def _make_hook(tr: CapTracker):
                     def _hook(_mod, inputs):
-                        if self.cap and self._capture_now and torch.is_grad_enabled():
+                        if self.cap and self.cap_p > 0.0 and self._capture_now and torch.is_grad_enabled():
                             if inputs and torch.is_tensor(inputs[0]):
                                 tr.update(inputs[0])
                     return _hook
@@ -276,7 +277,7 @@ class CapMuon(torch.optim.Optimizer):
                 buf.mul_(mom).add_(g)
                 Z = g.add(buf, alpha=mom) if nesterov else buf
 
-                tr = self.trackers.get(p, None) if self.cap else None
+                tr = self.trackers.get(p, None) if (self.cap and self.cap_p > 0.0) else None
                 apply_cap = (tr is not None) and (tr.steps >= 2) and bool((tr.s < 1.0).any())
 
                 if apply_cap:
